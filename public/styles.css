@@ -1,0 +1,309 @@
+:root {
+  --bg: #f5f2ea;
+  --ink: #151515;
+  --muted: #68645b;
+  --line: #d8d0c2;
+  --panel: #fffdf8;
+  --accent: #0f7d68;
+  --accent-dark: #095b4c;
+  --danger: #b3261e;
+  --ok: #16784f;
+  --shadow: 0 24px 60px rgba(31, 24, 11, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 20% 15%, rgba(15, 125, 104, 0.16), transparent 28rem),
+    linear-gradient(135deg, #f5f2ea 0%, #ebe5d8 100%);
+  color: var(--ink);
+  font-family: "Aptos", "Segoe UI", sans-serif;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0.8rem 1rem;
+}
+
+button:hover {
+  background: var(--accent-dark);
+}
+
+button.ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+input,
+textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  color: var(--ink);
+  padding: 0.85rem 0.95rem;
+}
+
+textarea {
+  min-height: 11rem;
+  resize: vertical;
+  font-family: "Cascadia Mono", Consolas, monospace;
+}
+
+.redeem-shell,
+.admin-login-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+}
+
+.redeem-panel,
+.login-card,
+.panel {
+  background: rgba(255, 253, 248, 0.92);
+  border: 1px solid rgba(216, 208, 194, 0.75);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.redeem-panel {
+  width: min(100%, 42rem);
+  padding: clamp(1.5rem, 5vw, 3rem);
+}
+
+.login-card {
+  width: min(100%, 26rem);
+  padding: 2rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.brand-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 8px;
+  background: var(--ink);
+  color: white;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.eyebrow {
+  margin: 0 0 0.25rem;
+  color: var(--accent-dark);
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+h1,
+h2 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+h1 {
+  font-size: clamp(2rem, 6vw, 4rem);
+  line-height: 0.95;
+}
+
+h2 {
+  font-size: 1.2rem;
+}
+
+.form-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.inline-control {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.message {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 6px;
+  background: #ebe5d8;
+  color: var(--ink);
+}
+
+.message.error {
+  background: #fde8e6;
+  color: var(--danger);
+}
+
+.message.success {
+  background: #e6f4ee;
+  color: var(--ok);
+}
+
+.activation-card {
+  margin-top: 1rem;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+}
+
+.activation-card strong {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 1.2rem;
+}
+
+.label {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+#sms-code.ready {
+  color: var(--ok);
+  font-size: 1.8rem;
+}
+
+.admin-shell {
+  width: min(100% - 2rem, 72rem);
+  margin: 0 auto;
+  padding: 2rem 0;
+}
+
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.admin-header h1 {
+  font-size: clamp(2rem, 5vw, 3.4rem);
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.panel {
+  padding: 1.25rem;
+}
+
+.panel > h2,
+.panel-title-row {
+  margin-bottom: 1rem;
+}
+
+.panel-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
+.output {
+  min-height: 6rem;
+  white-space: pre-wrap;
+  background: #151515;
+  color: #f8f2e6;
+  border-radius: 6px;
+  padding: 1rem;
+  overflow: auto;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--line);
+  padding: 0.75rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+th {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.status {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  background: #eee8dd;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.status.active,
+.status.used {
+  background: #e6f4ee;
+  color: var(--ok);
+}
+
+.status.expired,
+.status.revoked {
+  background: #fde8e6;
+  color: var(--danger);
+}
+
+@media (max-width: 760px) {
+  .inline-control,
+  .activation-card,
+  .admin-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

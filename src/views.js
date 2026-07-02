@@ -1,0 +1,136 @@
+function page(title, body, scripts = '') {
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${title}</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+${body}
+${scripts}
+</body>
+</html>`;
+}
+
+export function renderRedeemPage() {
+  return page(
+    'CDKey 验证码领取',
+    `<main class="redeem-shell">
+  <section class="redeem-panel">
+    <div class="brand-row">
+      <div class="brand-mark">OK</div>
+      <div>
+        <p class="eyebrow">OpenAI 临时验证码</p>
+        <h1>输入 CDKey 获取手机号</h1>
+      </div>
+    </div>
+    <form id="redeem-form" class="form-grid">
+      <label for="key">CDKey</label>
+      <div class="inline-control">
+        <input id="key" name="key" autocomplete="off" placeholder="OK-XXXX-XXXX-XXXX-XXXX" required>
+        <button type="submit">领取</button>
+      </div>
+    </form>
+    <div id="redeem-message" class="message" hidden></div>
+    <section id="activation-card" class="activation-card" hidden>
+      <div>
+        <span class="label">手机号</span>
+        <strong id="phone-number">-</strong>
+      </div>
+      <div>
+        <span class="label">剩余时间</span>
+        <strong id="expires-in">-</strong>
+      </div>
+      <div class="code-block">
+        <span class="label">验证码</span>
+        <strong id="sms-code">等待短信</strong>
+      </div>
+    </section>
+  </section>
+</main>`,
+    '<script src="/redeem.js" type="module"></script>',
+  );
+}
+
+export function renderLoginPage(error = '') {
+  return page(
+    '管理端登录',
+    `<main class="admin-login-shell">
+  <form class="login-card" method="post" action="/admin/login">
+    <div class="brand-mark">OK</div>
+    <h1>管理端</h1>
+    <label for="password">管理员密码</label>
+    <input id="password" name="password" type="password" autofocus required>
+    <button type="submit">登录</button>
+    ${error ? `<p class="message error">${error}</p>` : ''}
+  </form>
+</main>`,
+  );
+}
+
+export function renderAdminPage() {
+  return page(
+    'CDKey 管理端',
+    `<main class="admin-shell">
+  <header class="admin-header">
+    <div>
+      <p class="eyebrow">SMSBower OpenAI 接码</p>
+      <h1>CDKey 管理端</h1>
+    </div>
+    <form method="post" action="/admin/logout"><button class="ghost" type="submit">退出</button></form>
+  </header>
+
+  <section class="admin-grid">
+    <section class="panel">
+      <h2>生成 CDKey</h2>
+      <form id="generate-form" class="inline-control">
+        <input name="count" type="number" min="1" max="500" value="10">
+        <button type="submit">生成</button>
+      </form>
+      <textarea id="generated-keys" readonly placeholder="新生成的 CDKey 只会在这里显示一次"></textarea>
+    </section>
+
+    <section class="panel">
+      <h2>健康检查</h2>
+      <button id="health-button" type="button">检查余额与配置</button>
+      <pre id="health-output" class="output">尚未检查</pre>
+    </section>
+
+    <section class="panel">
+      <h2>验证 CDKey</h2>
+      <form id="validate-form" class="inline-control">
+        <input name="key" autocomplete="off" placeholder="OK-XXXX-XXXX-XXXX-XXXX">
+        <button type="submit">验证</button>
+      </form>
+      <pre id="validate-output" class="output">等待输入</pre>
+    </section>
+
+    <section class="panel wide">
+      <div class="panel-title-row">
+        <h2>CDKey 列表</h2>
+        <button id="refresh-keys" type="button">刷新</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>前缀</th>
+              <th>状态</th>
+              <th>手机号</th>
+              <th>过期时间</th>
+              <th>创建时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="keys-table"></tbody>
+        </table>
+      </div>
+    </section>
+  </section>
+</main>`,
+    '<script src="/admin.js" type="module"></script>',
+  );
+}
