@@ -32,6 +32,33 @@ function safeCompare(actual, expected) {
   return crypto.timingSafeEqual(actualBuffer, expectedBuffer);
 }
 
+function securityHeaders(req, res, next) {
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'",
+  );
+  next();
+}
+
+function blockSensitivePaths(req, res, next) {
+  const requestPath = decodeURIComponent(req.path || '').replace(/\\/g, '/');
+  const lowerPath = requestPath.toLowerCase();
+  const blocked =
+    /(^|\/)\.env([./-]|$)/.test(lowerPath) ||
+    /(^|\/)[^/]*\.env($|[./-])/.test(lowerPath) ||
+    /(^|\/)(\.git|data|node_modules)(\/|$)/.test(lowerPath) ||
+    /\.(sqlite|sqlite3|db|log)$/i.test(lowerPath);
+
+  if (blocked) {
+    return res.status(404).type('txt').send('Not Found');
+  }
+  return next();
+}
+
 function addMinutes(date, minutes) {
   return new Date(date.getTime() + minutes * 60 * 1000);
 }
@@ -86,14 +113,33 @@ function requireAdmin(req, res, next) {
   return res.status(401).json({ error: '需要管理员登录' });
 }
 
+function ensureCsrfToken(req) {
+  if (!req.session.csrfToken) {
+    req.session.csrfToken = crypto.randomBytes(32).toString('hex');
+  }
+  return req.session.csrfToken;
+}
+
+function requireCsrf(req, res, next) {
+  const expected = req.session?.csrfToken;
+  const provided = req.get('X-CSRF-Token') || req.body?._csrf;
+  if (!expected || !provided || !safeCompare(provided, expected)) {
+    return res.status(403).json({ error: 'CSRF token invalid', code: 'CSRF_INVALID' });
+  }
+  return next();
+}
+
 export function createApp({ db, smsClient, config, now = () => new Date() }) {
   const app = express();
   const repo = createRepositories(db, now);
 
+  app.disable('x-powered-by');
   app.set('trust proxy', config.secureCookies ? 1 : false);
+  app.use(securityHeaders);
+  app.use(blockSensitivePaths);
   app.use(express.json({ limit: '64kb' }));
   app.use(express.urlencoded({ extended: false, limit: '64kb' }));
-  app.use(express.static(publicDir));
+  app.use(express.static(publicDir, { dotfiles: 'deny' }));
   app.use(
     session({
       name: 'ok_cdkey.sid',
@@ -186,6 +232,7 @@ export function createApp({ db, smsClient, config, now = () => new Date() }) {
     return req.session.regenerate((regenerateError) => {
       if (regenerateError) return next(regenerateError);
       req.session.admin = true;
+      req.session.csrfToken = crypto.randomBytes(32).toString('hex');
       return req.session.save((saveError) => {
         if (saveError) return next(saveError);
         return res.redirect('/admin');
@@ -193,7 +240,7 @@ export function createApp({ db, smsClient, config, now = () => new Date() }) {
     });
   });
 
-  app.post('/admin/logout', (req, res, next) => {
+  app.post('/admin/logout', requireAdmin, requireCsrf, (req, res, next) => {
     req.session.destroy((error) => {
       if (error) return next(error);
       return res.redirect('/admin/login');
@@ -202,7 +249,7 @@ export function createApp({ db, smsClient, config, now = () => new Date() }) {
 
   app.get('/admin', (req, res) => {
     if (req.session?.admin !== true) return res.redirect('/admin/login');
-    return res.type('html').send(renderAdminPage());
+    return res.type('html').send(renderAdminPage(ensureCsrfToken(req)));
   });
 
   app.get(
@@ -236,7 +283,7 @@ export function createApp({ db, smsClient, config, now = () => new Date() }) {
     res.json({ total: result.total, keys: result.keys.map((key) => serializeKey(key, currentTime)) });
   });
 
-  app.post('/admin/api/keys', requireAdmin, (req, res) => {
+  app.post('/admin/api/keys', requireAdmin, requireCsrf, (req, res) => {
     const count = Number(req.body.count);
     if (!Number.isInteger(count) || count < 1 || count > 500) {
       throw new AppError(400, '生成数量必须是 1 到 500 的整数', 'INVALID_COUNT');
@@ -244,7 +291,7 @@ export function createApp({ db, smsClient, config, now = () => new Date() }) {
     res.status(201).json({ keys: repo.createKeys(count) });
   });
 
-  app.post('/admin/api/keys/validate', requireAdmin, (req, res) => {
+  app.post('/admin/api/keys/validate', requireAdmin, requireCsrf, (req, res) => {
     const key = repo.findKeyByPlaintext(req.body.key);
     if (!key) throw new AppError(404, 'CDKey 不存在', 'KEY_NOT_FOUND');
     res.json(serializeKey(key, now()));
@@ -253,6 +300,7 @@ export function createApp({ db, smsClient, config, now = () => new Date() }) {
   app.post(
     '/admin/api/keys/:id/revoke',
     requireAdmin,
+    requireCsrf,
     asyncRoute(async (req, res) => {
       const result = repo.revokeKey(Number(req.params.id));
       if (!result) throw new AppError(404, 'CDKey 不存在', 'KEY_NOT_FOUND');
@@ -274,13 +322,11 @@ export function createApp({ db, smsClient, config, now = () => new Date() }) {
 
   app.use((err, req, res, next) => {
     const status = err.status || (err instanceof SmsbowerError ? 502 : 500);
+    const expose = err instanceof AppError || err instanceof SmsbowerError;
     const body = {
-      error: err.message || 'Internal Server Error',
-      code: err.code || 'INTERNAL_ERROR',
+      error: expose ? err.message || 'Internal Server Error' : 'Internal Server Error',
+      code: expose ? err.code || 'APP_ERROR' : 'INTERNAL_ERROR',
     };
-    if (process.env.NODE_ENV !== 'production' && status >= 500) {
-      body.stack = err.stack;
-    }
     res.status(status).json(body);
   });
 

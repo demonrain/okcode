@@ -1,13 +1,18 @@
 export function loadConfig(env = process.env) {
   const production = env.NODE_ENV === 'production';
-  const sessionSecret = env.SESSION_SECRET || (production ? '' : 'development-session-secret-change-before-production');
-  const adminPassword = env.ADMIN_PASSWORD || (production ? '' : 'admin');
+  const sessionSecret = String(env.SESSION_SECRET || '').trim();
+  const adminPassword = String(env.ADMIN_PASSWORD || '').trim();
+  const weakPasswords = new Set(['admin', 'password', 'change-me', 'changeme', '123456', 'admin123']);
+  const placeholderPattern = /replace|change|development|example|placeholder|^your-/i;
 
-  if (production && sessionSecret.length < 32) {
-    throw new Error('SESSION_SECRET must be at least 32 bytes in production');
+  if (!adminPassword) {
+    throw new Error('ADMIN_PASSWORD is required');
   }
-  if (production && !adminPassword) {
-    throw new Error('ADMIN_PASSWORD is required in production');
+  if (adminPassword.length < 12 || weakPasswords.has(adminPassword.toLowerCase()) || placeholderPattern.test(adminPassword)) {
+    throw new Error('ADMIN_PASSWORD must be at least 12 characters and not a placeholder');
+  }
+  if (sessionSecret.length < 32 || placeholderPattern.test(sessionSecret)) {
+    throw new Error('SESSION_SECRET must be at least 32 random characters');
   }
 
   return {

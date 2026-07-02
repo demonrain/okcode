@@ -10,18 +10,29 @@
 - 用户无需登录，输入 CDKey 获取手机号并轮询验证码。
 - CDKey 首次兑换后绑定一个 SMSBower activation，有效期默认 25 分钟。
 
+## 安全要求
+
+启动服务前必须配置 `.env`，应用不会再使用 `admin/admin` 之类的默认凭据。
+
+- `ADMIN_PASSWORD` 至少 12 个字符，不要使用 `admin`、`change-me` 等弱口令。
+- `SESSION_SECRET` 至少 32 个随机字符，不要使用示例占位符。
+- `.env`、`*.env`、数据库和日志文件已加入 `.gitignore`，不要把真实密钥提交到仓库。
+- 管理端写操作需要登录 session 和 CSRF token。
+- 未知服务器错误不会把 stack trace 或内部错误详情返回给客户端。
+
 ## 配置
 
 复制 `.env.example` 为 `.env` 后填写：
 
 ```ini
-ADMIN_PASSWORD=change-me
-SESSION_SECRET=replace-with-at-least-32-random-bytes
+ADMIN_PASSWORD=your-long-random-admin-password
+SESSION_SECRET=your-32-plus-character-random-session-secret
 
 SMSBOWER_API_KEY=replace-me
 SMSBOWER_SERVICE_CODE=replace-me
 SMSBOWER_COUNTRY=0
 SMSBOWER_MAX_PRICE=
+SMSBOWER_MIN_PRICE=
 ACTIVATION_TTL_MINUTES=25
 ```
 
@@ -39,8 +50,6 @@ npm start
 
 - 用户页：`http://localhost:3000/`
 - 管理端：`http://localhost:3000/admin`
-
-开发环境如果没有设置 `.env`，管理端密码默认是 `admin`。生产环境必须设置 `ADMIN_PASSWORD` 和不少于 32 字节的 `SESSION_SECRET`。
 
 ## SMSBower 行为
 

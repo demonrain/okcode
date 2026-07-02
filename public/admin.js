@@ -2,10 +2,14 @@ const generatedKeys = document.querySelector('#generated-keys');
 const keysTable = document.querySelector('#keys-table');
 const validateOutput = document.querySelector('#validate-output');
 const healthOutput = document.querySelector('#health-output');
+const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
 async function requestJson(url, options = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
   const response = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     ...options,
   });
   const data = await response.json().catch(() => ({}));

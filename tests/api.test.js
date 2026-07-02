@@ -42,6 +42,14 @@ function makeTestApp(overrides = {}) {
 
 async function login(agent) {
   await agent.post('/admin/login').type('form').send({ password: 'admin-pass' }).expect(302);
+  const adminPage = await agent.get('/admin').expect(200);
+  const match = adminPage.text.match(/name="csrf-token" content="([^"]+)"/);
+  expect(match?.[1]).toBeTruthy();
+  return match[1];
+}
+
+function adminPost(agent, url, csrfToken) {
+  return agent.post(url).set('X-CSRF-Token', csrfToken);
 }
 
 describe('admin API', () => {
@@ -49,6 +57,25 @@ describe('admin API', () => {
     const { app } = makeTestApp();
 
     await request(app).get('/admin/api/keys').expect(401);
+  });
+
+  test('sets browser hardening headers', async () => {
+    const { app } = makeTestApp();
+
+    const response = await request(app).get('/').expect(200);
+
+    expect(response.headers['x-frame-options']).toBe('DENY');
+    expect(response.headers['x-content-type-options']).toBe('nosniff');
+    expect(response.headers['referrer-policy']).toBe('no-referrer');
+    expect(response.headers['content-security-policy']).toContain("default-src 'self'");
+  });
+
+  test('rejects admin mutations without a CSRF token', async () => {
+    const { app } = makeTestApp();
+    const agent = request.agent(app);
+    await login(agent);
+
+    await agent.post('/admin/api/keys').send({ count: 1 }).expect(403);
   });
 
   test('reports SMSBower health without calling balance when configuration is missing', async () => {
@@ -82,9 +109,9 @@ describe('admin API', () => {
   test('generates keys and only returns plaintext once', async () => {
     const { app } = makeTestApp();
     const agent = request.agent(app);
-    await login(agent);
+    const csrfToken = await login(agent);
 
-    const created = await agent.post('/admin/api/keys').send({ count: 2 }).expect(201);
+    const created = await adminPost(agent, '/admin/api/keys', csrfToken).send({ count: 2 }).expect(201);
     expect(created.body.keys).toHaveLength(2);
     expect(created.body.keys[0].key).toMatch(/^OK-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/);
 
@@ -97,11 +124,12 @@ describe('admin API', () => {
   test('validates keys without redeeming them', async () => {
     const { app, smsClient } = makeTestApp();
     const agent = request.agent(app);
-    await login(agent);
-    const created = await agent.post('/admin/api/keys').send({ count: 1 }).expect(201);
+    const csrfToken = await login(agent);
+    const created = await adminPost(agent, '/admin/api/keys', csrfToken).send({ count: 1 }).expect(201);
 
     const validated = await agent
       .post('/admin/api/keys/validate')
+      .set('X-CSRF-Token', csrfToken)
       .send({ key: created.body.keys[0].key })
       .expect(200);
 
@@ -112,13 +140,14 @@ describe('admin API', () => {
   test('revokes unused keys', async () => {
     const { app } = makeTestApp();
     const agent = request.agent(app);
-    await login(agent);
-    const created = await agent.post('/admin/api/keys').send({ count: 1 }).expect(201);
+    const csrfToken = await login(agent);
+    const created = await adminPost(agent, '/admin/api/keys', csrfToken).send({ count: 1 }).expect(201);
 
-    await agent.post(`/admin/api/keys/${created.body.keys[0].id}/revoke`).expect(200);
+    await adminPost(agent, `/admin/api/keys/${created.body.keys[0].id}/revoke`, csrfToken).expect(200);
 
     const validated = await agent
       .post('/admin/api/keys/validate')
+      .set('X-CSRF-Token', csrfToken)
       .send({ key: created.body.keys[0].key })
       .expect(200);
     expect(validated.body.status).toBe('revoked');
@@ -129,8 +158,8 @@ describe('redeem API', () => {
   test('redeems an unused key by purchasing one number', async () => {
     const { app, smsClient } = makeTestApp();
     const agent = request.agent(app);
-    await login(agent);
-    const created = await agent.post('/admin/api/keys').send({ count: 1 }).expect(201);
+    const csrfToken = await login(agent);
+    const created = await adminPost(agent, '/admin/api/keys', csrfToken).send({ count: 1 }).expect(201);
 
     const redeemed = await request(app)
       .post('/api/redeem')
@@ -146,8 +175,8 @@ describe('redeem API', () => {
   test('repeated redemption returns the existing activation without buying again', async () => {
     const { app, smsClient } = makeTestApp();
     const agent = request.agent(app);
-    await login(agent);
-    const created = await agent.post('/admin/api/keys').send({ count: 1 }).expect(201);
+    const csrfToken = await login(agent);
+    const created = await adminPost(agent, '/admin/api/keys', csrfToken).send({ count: 1 }).expect(201);
 
     await request(app).post('/api/redeem').send({ key: created.body.keys[0].key }).expect(200);
     await request(app).post('/api/redeem').send({ key: created.body.keys[0].key }).expect(200);
@@ -162,8 +191,8 @@ describe('redeem API', () => {
       },
     });
     const agent = request.agent(app);
-    await login(agent);
-    const created = await agent.post('/admin/api/keys').send({ count: 1 }).expect(201);
+    const csrfToken = await login(agent);
+    const created = await adminPost(agent, '/admin/api/keys', csrfToken).send({ count: 1 }).expect(201);
     await request(app).post('/api/redeem').send({ key: created.body.keys[0].key }).expect(200);
 
     const status = await request(app)
@@ -181,8 +210,8 @@ describe('redeem API', () => {
       now: () => currentTime,
     });
     const agent = request.agent(app);
-    await login(agent);
-    const created = await agent.post('/admin/api/keys').send({ count: 1 }).expect(201);
+    const csrfToken = await login(agent);
+    const created = await adminPost(agent, '/admin/api/keys', csrfToken).send({ count: 1 }).expect(201);
     await request(app).post('/api/redeem').send({ key: created.body.keys[0].key }).expect(200);
     currentTime = new Date('2026-07-02T10:26:00.000Z');
 
@@ -192,5 +221,25 @@ describe('redeem API', () => {
 
     expect(status.body.status).toBe('expired');
     expect(smsClient.setStatus).toHaveBeenCalledWith('act-1', 8);
+  });
+
+  test('does not leak internal errors or stack traces to public redemption responses', async () => {
+    const { app } = makeTestApp({
+      smsClient: {
+        getNumber: vi.fn(async () => {
+          throw new Error('SMSBOWER_API_KEY=secret-value');
+        }),
+      },
+    });
+    const agent = request.agent(app);
+    const csrfToken = await login(agent);
+    const created = await adminPost(agent, '/admin/api/keys', csrfToken).send({ count: 1 }).expect(201);
+
+    const response = await request(app).post('/api/redeem').send({ key: created.body.keys[0].key }).expect(500);
+    const bodyText = JSON.stringify(response.body);
+
+    expect(response.body.error).toBe('Internal Server Error');
+    expect(bodyText).not.toContain('secret-value');
+    expect(bodyText).not.toContain('stack');
   });
 });

@@ -1,4 +1,4 @@
-function page(title, body, scripts = '') {
+function page(title, body, scripts = '', extraHead = '') {
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -6,6 +6,7 @@ function page(title, body, scripts = '') {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${title}</title>
   <link rel="stylesheet" href="/styles.css">
+  ${extraHead}
 </head>
 <body>
 ${body}
@@ -70,7 +71,7 @@ export function renderLoginPage(error = '') {
   );
 }
 
-export function renderAdminPage() {
+export function renderAdminPage(csrfToken) {
   return page(
     'CDKey 管理端',
     `<main class="admin-shell">
@@ -79,7 +80,10 @@ export function renderAdminPage() {
       <p class="eyebrow">SMSBower OpenAI 接码</p>
       <h1>CDKey 管理端</h1>
     </div>
-    <form method="post" action="/admin/logout"><button class="ghost" type="submit">退出</button></form>
+    <form method="post" action="/admin/logout">
+      <input type="hidden" name="_csrf" value="${csrfToken}">
+      <button class="ghost" type="submit">退出</button>
+    </form>
   </header>
 
   <section class="admin-grid">
@@ -132,5 +136,6 @@ export function renderAdminPage() {
   </section>
 </main>`,
     '<script src="/admin.js" type="module"></script>',
+    `<meta name="csrf-token" content="${csrfToken}">`,
   );
 }
