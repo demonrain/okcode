@@ -76,6 +76,7 @@ describe('admin API', () => {
     const response = await request(app).get('/').expect(200);
 
     expect(response.text).toContain('id="replace-number"');
+    expect(response.text).toContain('id="copy-local-number"');
   });
 
   test('rejects admin mutations without a CSRF token', async () => {
@@ -178,6 +179,35 @@ describe('redeem API', () => {
     expect(redeemed.body.phoneNumber).toBe('15551234567');
     expect(redeemed.body.expiresInSeconds).toBe(1500);
     expect(smsClient.getNumber).toHaveBeenCalledTimes(1);
+  });
+
+  test('returns country, dial code, and local number for Argentina activations', async () => {
+    const { app } = makeTestApp({
+      smsClient: {
+        getNumber: vi.fn(async () => ({
+          activationId: 'act-ar',
+          phoneNumber: '549112345678',
+          activationCost: '0.42',
+          countryCode: '39',
+          activationTime: '2026-07-02 10:00:00',
+          canGetAnotherSms: true,
+          raw: {},
+        })),
+      },
+    });
+    const agent = request.agent(app);
+    const csrfToken = await login(agent);
+    const created = await adminPost(agent, '/admin/api/keys', csrfToken).send({ count: 1 }).expect(201);
+
+    const redeemed = await request(app)
+      .post('/api/redeem')
+      .send({ key: created.body.keys[0].key })
+      .expect(200);
+
+    expect(redeemed.body.phoneNumber).toBe('549112345678');
+    expect(redeemed.body.countryName).toBe('Argentina');
+    expect(redeemed.body.dialCode).toBe('+54');
+    expect(redeemed.body.localNumber).toBe('9112345678');
   });
 
   test('repeated redemption returns the existing activation without buying again', async () => {

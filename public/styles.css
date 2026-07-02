@@ -51,6 +51,11 @@ button.ghost {
   border: 1px solid var(--line);
 }
 
+button.small {
+  padding: 0.45rem 0.65rem;
+  font-size: 0.86rem;
+}
+
 input,
 textarea {
   width: 100%;
@@ -182,6 +187,23 @@ h2 {
   display: block;
   margin-top: 0.25rem;
   font-size: 1.2rem;
+}
+
+.copy-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.copy-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.copy-row button {
+  flex: 0 0 auto;
+  margin-top: 0.25rem;
 }
 
 .activation-actions {

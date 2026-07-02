@@ -41,6 +41,21 @@ export function renderRedeemPage() {
         <strong id="phone-number">-</strong>
       </div>
       <div>
+        <span class="label">国家</span>
+        <strong id="country-name">-</strong>
+      </div>
+      <div>
+        <span class="label">区号</span>
+        <strong id="dial-code">-</strong>
+      </div>
+      <div class="local-number-block">
+        <span class="label">无区号号码</span>
+        <div class="copy-row">
+          <strong id="local-number">-</strong>
+          <button id="copy-local-number" class="ghost small" type="button" disabled>复制</button>
+        </div>
+      </div>
+      <div>
         <span class="label">剩余时间</span>
         <strong id="expires-in">-</strong>
       </div>

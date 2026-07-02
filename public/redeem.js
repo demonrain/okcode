@@ -2,12 +2,17 @@ const form = document.querySelector('#redeem-form');
 const message = document.querySelector('#redeem-message');
 const card = document.querySelector('#activation-card');
 const phoneNumber = document.querySelector('#phone-number');
+const countryName = document.querySelector('#country-name');
+const dialCode = document.querySelector('#dial-code');
+const localNumber = document.querySelector('#local-number');
 const expiresIn = document.querySelector('#expires-in');
 const smsCode = document.querySelector('#sms-code');
 const replaceButton = document.querySelector('#replace-number');
+const copyLocalNumberButton = document.querySelector('#copy-local-number');
 
 let activeKey = '';
 let pollTimer = null;
+let currentLocalNumber = '';
 
 function stopPolling() {
   if (pollTimer) clearInterval(pollTimer);
@@ -35,11 +40,33 @@ function formatSeconds(seconds) {
 
 function renderActivation(data) {
   card.hidden = false;
+  currentLocalNumber = data.localNumber || '';
   phoneNumber.textContent = data.phoneNumber || '-';
+  countryName.textContent = data.countryName || '-';
+  dialCode.textContent = data.dialCode || '-';
+  localNumber.textContent = currentLocalNumber || '-';
   expiresIn.textContent = data.expiresInSeconds == null ? '-' : formatSeconds(data.expiresInSeconds);
   smsCode.textContent = data.code || '等待短信';
   smsCode.classList.toggle('ready', Boolean(data.code));
   replaceButton.disabled = data.status !== 'active' || Boolean(data.code);
+  copyLocalNumberButton.disabled = !currentLocalNumber;
+}
+
+async function copyText(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const input = document.createElement('textarea');
+  input.value = text;
+  input.setAttribute('readonly', '');
+  input.style.position = 'fixed';
+  input.style.top = '-9999px';
+  document.body.append(input);
+  input.select();
+  document.execCommand('copy');
+  input.remove();
 }
 
 async function requestJson(url, options) {
@@ -110,5 +137,16 @@ replaceButton.addEventListener('click', async () => {
       replaceButton.disabled = false;
       startPolling();
     }
+  }
+});
+
+copyLocalNumberButton.addEventListener('click', async () => {
+  if (!currentLocalNumber) return;
+
+  try {
+    await copyText(currentLocalNumber);
+    showMessage('已复制无区号号码', 'success');
+  } catch (error) {
+    showMessage('复制失败，请手动复制无区号号码', 'error');
   }
 });

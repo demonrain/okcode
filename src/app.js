@@ -7,6 +7,7 @@ import { createRepositories } from './db.js';
 import { SmsbowerError } from './smsbower.js';
 import { SqliteSessionStore } from './session-store.js';
 import { renderAdminPage, renderLoginPage, renderRedeemPage } from './views.js';
+import { getPhoneCountryInfo } from './countries.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(__dirname, '..', 'public');
@@ -85,9 +86,14 @@ function serializeKey(key, currentTime = new Date()) {
 }
 
 function serializeRedeem(key, currentTime) {
+  const countryInfo = getPhoneCountryInfo(key.activation?.countryCode, key.activation?.phoneNumber);
   return {
     status: key.status,
     phoneNumber: key.activation?.phoneNumber ?? null,
+    countryCode: countryInfo.countryCode,
+    countryName: countryInfo.countryName,
+    dialCode: countryInfo.dialCode,
+    localNumber: countryInfo.localNumber,
     code: key.activation?.code ?? null,
     expiresAt: key.expiresAt,
     expiresInSeconds: key.expiresAt ? secondsUntil(key.expiresAt, currentTime) : null,
