@@ -4,22 +4,12 @@
 
 ## 功能
 
-- 管理端单密码登录。
+- 管理端单密码登录，写操作需要 CSRF token。
 - 批量生成 CDKey，明文只在生成响应中显示一次，数据库只保存 hash。
-- 管理端验证、查询、撤销 CDKey。
-- 用户无需登录，输入 CDKey 获取手机号并轮询验证码。
-- 用户在未收到验证码时可以更换号码，应用会先取消旧 activation 再获取新号码。
-- CDKey 首次兑换后绑定一个 SMSBower activation，有效期默认 25 分钟。
-
-## 安全要求
-
-启动服务前必须配置 `.env`，应用不会再使用 `admin/admin` 之类的默认凭据。
-
-- `ADMIN_PASSWORD` 至少 12 个字符，不要使用 `admin`、`change-me` 等弱口令。
-- `SESSION_SECRET` 至少 32 个随机字符，不要使用示例占位符。
-- `.env`、`*.env`、数据库和日志文件已加入 `.gitignore`，不要把真实密钥提交到仓库。
-- 管理端写操作需要登录 session 和 CSRF token。
-- 未知服务器错误不会把 stack trace 或内部错误详情返回给客户端。
+- 用户无需登录，输入 CDKey 获取手机号、国家、区号、无区号号码并轮询验证码。
+- 用户未收到短信时可以更换号码；应用会先确认旧号码仍未收到验证码，再取消旧 activation 并重新购买。
+- 管理端可配置 service code、多国家优先级、最低/最高价格、接码等级。
+- 管理端 CDKey 列表支持输入完整 CDKey 精确查询，并显示手机号、国家、费用和已收到的验证码。
 
 ## 配置
 
@@ -31,13 +21,33 @@ SESSION_SECRET=your-32-plus-character-random-session-secret
 
 SMSBOWER_API_KEY=replace-me
 SMSBOWER_SERVICE_CODE=replace-me
-SMSBOWER_COUNTRY=0
-SMSBOWER_MAX_PRICE=
+SMSBOWER_COUNTRIES=39,0,12
+SMSBOWER_QUALITY_TIER=any
 SMSBOWER_MIN_PRICE=
+SMSBOWER_MAX_PRICE=
 ACTIVATION_TTL_MINUTES=25
 ```
 
-`SMSBOWER_SERVICE_CODE` 需要在 SMSBower 后台或 `getServicesList` 中确认 OpenAI 对应编码。
+`.env` 里的 SMSBower 设置是首次启动默认值。管理员登录后在“接码设置”里保存的新设置会写入 SQLite，后续兑换和更换号码都会优先使用管理端设置。
+
+国家优先级用一行一个国家代码配置，越靠上优先级越高。例如阿根廷优先、俄罗斯兜底：
+
+```text
+39
+0
+```
+
+价格单位按 SMSBower API 文档是美元；`minPrice` 和 `maxPrice` 都可以留空。
+
+## 接码等级
+
+SMSBower API 文档中的 `getNumber/getNumberV2` 支持 `providerIds`、`exceptProviderIds`、`minPrice`、`maxPrice`，但没有直接的“铜/银/金”请求参数。
+
+本应用的处理方式：
+
+- `不限`：只按国家优先级和价格范围购买号码。
+- `金`：先调用 `getTopCountriesByService` 获取 Gold-ranked providers，再把对应国家的 providerIds 传给 `getNumberV2`。
+- `银`、`铜`：目前 SMSBower 文档没有公开对应过滤参数，应用会保存该配置用于展示，但实际购买不会额外传等级参数。
 
 ## 启动
 
@@ -52,13 +62,9 @@ npm start
 - 用户页：`http://localhost:3000/`
 - 管理端：`http://localhost:3000/admin`
 
-## SMSBower 行为
+## 安全
 
-- 购买号码：`getNumberV2`
-- 查询验证码：`getStatus`
-- 验证码成功后完成激活：`setStatus status=6`
-- 过期或撤销时尝试取消激活：`setStatus status=8`
-- 更换号码：先 `getStatus` 确认旧号码仍在等待验证码，再 `setStatus status=8` 取消，最后重新 `getNumberV2`。
-
-如果平台返回 `EARLY_CANCEL_DENIED`，应用会保留本地过期/撤销状态并忽略该取消失败。
-用户主动更换号码时如果返回 `EARLY_CANCEL_DENIED`，前端会提示稍后再试，不会购买新号码。
+- `ADMIN_PASSWORD` 至少 12 个字符，不要使用默认或占位密码。
+- `SESSION_SECRET` 至少 32 个随机字符。
+- `.env`、`*.env`、数据库和日志文件已加入 `.gitignore`，不要提交真实密钥。
+- 未知服务器错误不会把 stack trace 或内部错误详情返回给客户端。

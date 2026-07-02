@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { createDatabase } from '../src/db.js';
+import { SmsbowerError } from '../src/smsbower.js';
 
 function makeTestApp(overrides = {}) {
   const db = createDatabase(':memory:');
@@ -18,6 +19,7 @@ function makeTestApp(overrides = {}) {
     })),
     getStatus: vi.fn(async () => ({ state: 'waiting', code: null, lastCode: null, raw: 'STATUS_WAIT_CODE' })),
     setStatus: vi.fn(async () => ({ ok: true, raw: 'ACCESS_ACTIVATION' })),
+    getTopCountriesByService: vi.fn(async () => ({})),
     ...overrides.smsClient,
   };
   const now = overrides.now ?? (() => new Date('2026-07-02T10:00:00.000Z'));
@@ -30,10 +32,13 @@ function makeTestApp(overrides = {}) {
       sessionSecret: '12345678901234567890123456789012',
       serviceCode: 'openai',
       country: '0',
+      countries: '0',
       maxPrice: '',
       minPrice: '',
+      qualityTier: 'any',
       activationTtlMinutes: 25,
       secureCookies: false,
+      ...overrides.config,
     },
   });
 
@@ -87,8 +92,53 @@ describe('admin API', () => {
     await agent.post('/admin/api/keys').send({ count: 1 }).expect(403);
   });
 
+  test('renders admin controls for purchase settings and key search', async () => {
+    const { app } = makeTestApp();
+    const agent = request.agent(app);
+    await login(agent);
+
+    const response = await agent.get('/admin').expect(200);
+
+    expect(response.text).toContain('id="settings-form"');
+    expect(response.text).toContain('id="settings-countries"');
+    expect(response.text).toContain('id="key-search-form"');
+    expect(response.text).toContain('id="settings-quality-tier"');
+  });
+
+  test('saves SMSBower purchase settings from the admin API', async () => {
+    const { app } = makeTestApp();
+    const agent = request.agent(app);
+    const csrfToken = await login(agent);
+
+    await adminPost(agent, '/admin/api/settings', csrfToken)
+      .send({
+        serviceCode: 'oa',
+        minPrice: '0.10',
+        maxPrice: '0.55',
+        qualityTier: 'gold',
+        countries: [
+          { countryCode: '39', priority: 2 },
+          { countryCode: '0', priority: 1 },
+        ],
+      })
+      .expect(200);
+
+    const settings = await agent.get('/admin/api/settings').expect(200);
+
+    expect(settings.body).toMatchObject({
+      serviceCode: 'oa',
+      minPrice: '0.10',
+      maxPrice: '0.55',
+      qualityTier: 'gold',
+    });
+    expect(settings.body.countries).toEqual([
+      { countryCode: '0', priority: 1 },
+      { countryCode: '39', priority: 2 },
+    ]);
+  });
+
   test('reports SMSBower health without calling balance when configuration is missing', async () => {
-    const { app, smsClient } = makeTestApp();
+    const { app, smsClient } = makeTestApp({ config: { serviceCode: '' } });
     smsClient.apiKey = '';
     smsClient.serviceCode = '';
     const agent = request.agent(app);
@@ -181,6 +231,102 @@ describe('redeem API', () => {
     expect(smsClient.getNumber).toHaveBeenCalledTimes(1);
   });
 
+  test('uses saved country priority and price settings when purchasing numbers', async () => {
+    const getNumber = vi.fn(async (options) => {
+      if (options.country === '39') {
+        throw new SmsbowerError('NO_NUMBERS', 'NO_NUMBERS');
+      }
+      return {
+        activationId: 'act-ru',
+        phoneNumber: '15551234567',
+        activationCost: '0.40',
+        countryCode: options.country,
+        activationTime: '2026-07-02 10:00:00',
+        canGetAnotherSms: true,
+        raw: {},
+      };
+    });
+    const { app } = makeTestApp({ smsClient: { getNumber } });
+    const agent = request.agent(app);
+    const csrfToken = await login(agent);
+
+    await adminPost(agent, '/admin/api/settings', csrfToken)
+      .send({
+        serviceCode: 'oa',
+        minPrice: '0.10',
+        maxPrice: '0.50',
+        qualityTier: 'any',
+        countries: [
+          { countryCode: '39', priority: 1 },
+          { countryCode: '0', priority: 2 },
+        ],
+      })
+      .expect(200);
+    const created = await adminPost(agent, '/admin/api/keys', csrfToken).send({ count: 1 }).expect(201);
+
+    await request(app).post('/api/redeem').send({ key: created.body.keys[0].key }).expect(200);
+
+    expect(getNumber).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        serviceCode: 'oa',
+        country: '39',
+        minPrice: '0.10',
+        maxPrice: '0.50',
+      }),
+    );
+    expect(getNumber).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        serviceCode: 'oa',
+        country: '0',
+        minPrice: '0.10',
+        maxPrice: '0.50',
+      }),
+    );
+  });
+
+  test('uses Gold top provider ids when quality tier is gold', async () => {
+    const getNumber = vi.fn(async (options) => ({
+      activationId: 'act-gold',
+      phoneNumber: '549112345678',
+      activationCost: '0.42',
+      countryCode: options.country,
+      activationTime: '2026-07-02 10:00:00',
+      canGetAnotherSms: true,
+      raw: {},
+    }));
+    const { app, smsClient } = makeTestApp({
+      smsClient: {
+        getNumber,
+        getTopCountriesByService: vi.fn(async () => ({
+          39: {
+            20: { price: '0.44', count: 10 },
+            10: { price: '0.42', count: 8 },
+          },
+        })),
+      },
+    });
+    const agent = request.agent(app);
+    const csrfToken = await login(agent);
+
+    await adminPost(agent, '/admin/api/settings', csrfToken)
+      .send({
+        serviceCode: 'oa',
+        minPrice: '',
+        maxPrice: '0.50',
+        qualityTier: 'gold',
+        countries: [{ countryCode: '39', priority: 1 }],
+      })
+      .expect(200);
+    const created = await adminPost(agent, '/admin/api/keys', csrfToken).send({ count: 1 }).expect(201);
+
+    await request(app).post('/api/redeem').send({ key: created.body.keys[0].key }).expect(200);
+
+    expect(smsClient.getTopCountriesByService).toHaveBeenCalledWith('oa');
+    expect(getNumber).toHaveBeenCalledWith(expect.objectContaining({ country: '39', providerIds: '20,10' }));
+  });
+
   test('returns country, dial code, and local number for Argentina activations', async () => {
     const { app } = makeTestApp({
       smsClient: {
@@ -240,6 +386,31 @@ describe('redeem API', () => {
     expect(status.body.status).toBe('used');
     expect(status.body.code).toBe('123456');
     expect(smsClient.setStatus).toHaveBeenCalledWith('act-1', 6);
+  });
+
+  test('lists and validates a CDKey with the received SMS code', async () => {
+    const { app } = makeTestApp({
+      smsClient: {
+        getStatus: vi.fn(async () => ({ state: 'ok', code: '123456', lastCode: null, raw: 'STATUS_OK:123456' })),
+      },
+    });
+    const agent = request.agent(app);
+    const csrfToken = await login(agent);
+    const created = await adminPost(agent, '/admin/api/keys', csrfToken).send({ count: 1 }).expect(201);
+    const key = created.body.keys[0].key;
+    await request(app).post('/api/redeem').send({ key }).expect(200);
+    await request(app).get(`/api/redeem/${encodeURIComponent(key)}/status`).expect(200);
+
+    const listed = await agent.get(`/admin/api/keys?key=${encodeURIComponent(key)}`).expect(200);
+    expect(listed.body.total).toBe(1);
+    expect(listed.body.keys[0]).toMatchObject({
+      status: 'used',
+      code: '123456',
+      hasCode: true,
+    });
+
+    const validated = await adminPost(agent, '/admin/api/keys/validate', csrfToken).send({ key }).expect(200);
+    expect(validated.body.code).toBe('123456');
   });
 
   test('rejects expired active keys and cancels activation best effort', async () => {

@@ -8,9 +8,11 @@ import { SmsbowerError } from './smsbower.js';
 import { SqliteSessionStore } from './session-store.js';
 import { renderAdminPage, renderLoginPage, renderRedeemPage } from './views.js';
 import { getPhoneCountryInfo } from './countries.js';
+import { defaultPurchaseSettingsFromConfig, normalizePurchaseSettings } from './purchase-settings.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(__dirname, '..', 'public');
+const PURCHASE_SETTINGS_KEY = 'purchase_settings';
 
 class AppError extends Error {
   constructor(status, message, code = 'APP_ERROR') {
@@ -69,6 +71,7 @@ function secondsUntil(expiresAt, now) {
 }
 
 function serializeKey(key, currentTime = new Date()) {
+  const countryInfo = getPhoneCountryInfo(key.activation?.countryCode, key.activation?.phoneNumber);
   return {
     id: key.id,
     keyPrefix: key.keyPrefix,
@@ -79,7 +82,13 @@ function serializeKey(key, currentTime = new Date()) {
     usedAt: key.usedAt,
     revokedAt: key.revokedAt,
     phoneNumber: key.activation?.phoneNumber ?? null,
+    countryCode: countryInfo.countryCode,
+    countryName: countryInfo.countryName,
+    dialCode: countryInfo.dialCode,
+    localNumber: countryInfo.localNumber,
     activationId: key.activation?.activationId ?? null,
+    activationCost: key.activation?.activationCost ?? null,
+    code: key.activation?.code ?? null,
     hasCode: Boolean(key.activation?.code),
     expiresInSeconds: key.expiresAt ? secondsUntil(key.expiresAt, currentTime) : null,
   };
@@ -112,6 +121,55 @@ async function bestEffortCancel(smsClient, activationId) {
     if (error instanceof SmsbowerError && error.code === 'EARLY_CANCEL_DENIED') return;
     console.warn('Failed to cancel SMSBower activation:', error.message);
   }
+}
+
+function getStoredPurchaseSettings(repo, config) {
+  const fallback = defaultPurchaseSettingsFromConfig(config);
+  return normalizePurchaseSettings(repo.getSetting(PURCHASE_SETTINGS_KEY) ?? fallback, fallback);
+}
+
+function saveStoredPurchaseSettings(repo, config, input) {
+  const fallback = getStoredPurchaseSettings(repo, config);
+  const settings = normalizePurchaseSettings(input, fallback);
+  return repo.saveSetting(PURCHASE_SETTINGS_KEY, settings);
+}
+
+function providerIdsForCountry(topCountries, countryCode) {
+  const countryProviders = topCountries?.[countryCode] ?? topCountries?.[Number(countryCode)];
+  if (!countryProviders || typeof countryProviders !== 'object') return '';
+  return Object.entries(countryProviders)
+    .sort(([, left], [, right]) => Number(right?.count ?? 0) - Number(left?.count ?? 0))
+    .map(([providerId]) => providerId)
+    .join(',');
+}
+
+function isRetryablePurchaseError(error) {
+  return error instanceof SmsbowerError && ['NO_NUMBERS', 'BAD_COUNTRY'].includes(error.code);
+}
+
+async function purchaseNumber(smsClient, settings) {
+  const topCountries =
+    settings.qualityTier === 'gold' ? await smsClient.getTopCountriesByService(settings.serviceCode) : null;
+  let lastError = null;
+
+  for (const country of settings.countries) {
+    const options = {
+      serviceCode: settings.serviceCode,
+      country: country.countryCode,
+      minPrice: settings.minPrice,
+      maxPrice: settings.maxPrice,
+      providerIds: settings.qualityTier === 'gold' ? providerIdsForCountry(topCountries, country.countryCode) : '',
+    };
+
+    try {
+      return await smsClient.getNumber(options);
+    } catch (error) {
+      lastError = error;
+      if (!isRetryablePurchaseError(error)) throw error;
+    }
+  }
+
+  throw lastError ?? new SmsbowerError('NO_NUMBERS', 'NO_NUMBERS');
 }
 
 function requireAdmin(req, res, next) {
@@ -183,7 +241,7 @@ export function createApp({ db, smsClient, config, now = () => new Date() }) {
       }
 
       if (key.status === 'unused') {
-        const number = await smsClient.getNumber();
+        const number = await purchaseNumber(smsClient, getStoredPurchaseSettings(repo, config));
         key = repo.storeActivation(key.id, number, addMinutes(currentTime, config.activationTtlMinutes));
       }
 
@@ -279,7 +337,7 @@ export function createApp({ db, smsClient, config, now = () => new Date() }) {
         throw error;
       }
 
-      const number = await smsClient.getNumber();
+      const number = await purchaseNumber(smsClient, getStoredPurchaseSettings(repo, config));
       key = repo.replaceActivation(key.id, number, addMinutes(now(), config.activationTtlMinutes));
       return res.json(serializeRedeem(key, now()));
     }),
@@ -318,9 +376,10 @@ export function createApp({ db, smsClient, config, now = () => new Date() }) {
     '/admin/api/health',
     requireAdmin,
     asyncRoute(async (req, res) => {
+      const purchaseSettings = getStoredPurchaseSettings(repo, config);
       const missing = [];
       if (!smsClient.apiKey) missing.push('SMSBOWER_API_KEY');
-      if (!smsClient.serviceCode) missing.push('SMSBOWER_SERVICE_CODE');
+      if (!purchaseSettings.serviceCode) missing.push('SMSBOWER_SERVICE_CODE');
       let balance = null;
       if (missing.length === 0) {
         balance = await smsClient.getBalance();
@@ -329,19 +388,39 @@ export function createApp({ db, smsClient, config, now = () => new Date() }) {
         ok: missing.length === 0,
         missing,
         balance: balance?.balance ?? null,
-        serviceCode: config.serviceCode || null,
-        country: config.country || null,
-        maxPrice: config.maxPrice || null,
+        serviceCode: purchaseSettings.serviceCode || null,
+        countries: purchaseSettings.countries,
+        qualityTier: purchaseSettings.qualityTier,
+        maxPrice: purchaseSettings.maxPrice || null,
+        minPrice: purchaseSettings.minPrice || null,
+        qualityApiSupport: {
+          gold: 'Uses getTopCountriesByService providerIds when available',
+          silver: 'No direct SMSBower API parameter documented',
+          bronze: 'No direct SMSBower API parameter documented',
+        },
         ttlMinutes: config.activationTtlMinutes,
       });
     }),
   );
 
+  app.get('/admin/api/settings', requireAdmin, (req, res) => {
+    res.json(getStoredPurchaseSettings(repo, config));
+  });
+
+  app.post('/admin/api/settings', requireAdmin, requireCsrf, (req, res) => {
+    try {
+      res.json(saveStoredPurchaseSettings(repo, config, req.body));
+    } catch (error) {
+      throw new AppError(400, error.message, 'INVALID_SETTINGS');
+    }
+  });
+
   app.get('/admin/api/keys', requireAdmin, (req, res) => {
     const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
     const currentTime = now();
-    const result = repo.listKeys({ limit, offset });
+    const keyText = repo.normalizeKey(req.query.key);
+    const result = keyText ? repo.listKeysByPlaintext(keyText) : repo.listKeys({ limit, offset });
     res.json({ total: result.total, keys: result.keys.map((key) => serializeKey(key, currentTime)) });
   });
 

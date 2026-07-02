@@ -120,6 +120,36 @@ export function renderAdminPage(csrfToken) {
       <pre id="health-output" class="output">尚未检查</pre>
     </section>
 
+    <section class="panel wide">
+      <h2>接码设置</h2>
+      <form id="settings-form" class="settings-form">
+        <label for="settings-service-code">Service Code</label>
+        <input id="settings-service-code" name="serviceCode" autocomplete="off" placeholder="oa">
+
+        <label for="settings-countries">国家优先级，一行一个国家代码</label>
+        <textarea id="settings-countries" name="countries" placeholder="39&#10;0&#10;12"></textarea>
+
+        <label for="settings-quality-tier">接码等级</label>
+        <select id="settings-quality-tier" name="qualityTier">
+          <option value="any">不限</option>
+          <option value="bronze">铜</option>
+          <option value="silver">银</option>
+          <option value="gold">金</option>
+        </select>
+
+        <div class="settings-prices">
+          <label for="settings-min-price">最低价格 USD</label>
+          <input id="settings-min-price" name="minPrice" inputmode="decimal" placeholder="0.10">
+
+          <label for="settings-max-price">最高价格 USD</label>
+          <input id="settings-max-price" name="maxPrice" inputmode="decimal" placeholder="0.50">
+        </div>
+
+        <button type="submit">保存设置</button>
+      </form>
+      <pre id="settings-output" class="output">正在读取设置</pre>
+    </section>
+
     <section class="panel">
       <h2>验证 CDKey</h2>
       <form id="validate-form" class="inline-control">
@@ -132,7 +162,11 @@ export function renderAdminPage(csrfToken) {
     <section class="panel wide">
       <div class="panel-title-row">
         <h2>CDKey 列表</h2>
-        <button id="refresh-keys" type="button">刷新</button>
+        <form id="key-search-form" class="inline-control compact">
+          <input name="key" autocomplete="off" placeholder="输入完整 CDKey 精确查询">
+          <button type="submit">查询</button>
+          <button id="refresh-keys" type="button">刷新</button>
+        </form>
       </div>
       <div class="table-wrap">
         <table>
@@ -142,6 +176,9 @@ export function renderAdminPage(csrfToken) {
               <th>前缀</th>
               <th>状态</th>
               <th>手机号</th>
+              <th>国家</th>
+              <th>验证码</th>
+              <th>费用</th>
               <th>过期时间</th>
               <th>创建时间</th>
               <th>操作</th>

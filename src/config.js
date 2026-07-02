@@ -26,8 +26,10 @@ export function loadConfig(env = process.env) {
     smsBowerBaseUrl: env.SMSBOWER_BASE_URL || 'https://smsbower.page/stubs/handler_api.php',
     serviceCode: env.SMSBOWER_SERVICE_CODE || '',
     country: env.SMSBOWER_COUNTRY || '0',
+    countries: env.SMSBOWER_COUNTRIES || env.SMSBOWER_COUNTRY || '0',
     maxPrice: env.SMSBOWER_MAX_PRICE || '',
     minPrice: env.SMSBOWER_MIN_PRICE || '',
+    qualityTier: env.SMSBOWER_QUALITY_TIER || 'any',
     activationTtlMinutes: Number(env.ACTIVATION_TTL_MINUTES || 25),
   };
 }

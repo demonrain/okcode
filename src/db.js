@@ -54,6 +54,12 @@ function migrate(db) {
       data TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS app_settings (
+      name TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_cd_keys_status ON cd_keys(status);
     CREATE INDEX IF NOT EXISTS idx_cd_keys_expires_at ON cd_keys(expires_at);
   `);
@@ -150,6 +156,12 @@ export function createRepositories(db, now = () => new Date()) {
   const findById = db.prepare(`${selectKeyWithActivation.source} WHERE k.id = ?`);
   const listKeysStmt = db.prepare(`${selectKeyWithActivation.source} ORDER BY k.id DESC LIMIT ? OFFSET ?`);
   const countKeysStmt = db.prepare('SELECT COUNT(*) AS count FROM cd_keys');
+  const getSettingStmt = db.prepare('SELECT value FROM app_settings WHERE name = ?');
+  const upsertSettingStmt = db.prepare(`
+    INSERT INTO app_settings (name, value, updated_at)
+    VALUES (@name, @value, @updatedAt)
+    ON CONFLICT(name) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+  `);
 
   const activateKeyStmt = db.prepare(`
     UPDATE cd_keys
@@ -267,6 +279,26 @@ export function createRepositories(db, now = () => new Date()) {
     listKeys({ limit = 100, offset = 0 } = {}) {
       const keys = listKeysStmt.all(limit, offset).map(parseRow);
       return { keys, total: countKeysStmt.get().count };
+    },
+
+    listKeysByPlaintext(key) {
+      const found = parseRow(findByHash.get(hashKey(key)));
+      return { keys: found ? [found] : [], total: found ? 1 : 0 };
+    },
+
+    getSetting(name) {
+      const row = getSettingStmt.get(name);
+      if (!row) return null;
+      return JSON.parse(row.value);
+    },
+
+    saveSetting(name, value) {
+      upsertSettingStmt.run({
+        name,
+        value: JSON.stringify(value),
+        updatedAt: iso(now()),
+      });
+      return value;
     },
 
     storeActivation,

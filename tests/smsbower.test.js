@@ -3,6 +3,7 @@ import {
   parseBalanceResponse,
   parseNumberResponse,
   parseStatusResponse,
+  SmsbowerClient,
   SmsbowerError,
 } from '../src/smsbower.js';
 
@@ -83,6 +84,61 @@ describe('SMSBower response parsing', () => {
     expect(parseBalanceResponse('ACCESS_BALANCE:12.34')).toEqual({
       balance: '12.34',
       raw: 'ACCESS_BALANCE:12.34',
+    });
+  });
+
+  test('passes purchase filters to getNumberV2', async () => {
+    const urls = [];
+    const client = new SmsbowerClient({
+      apiKey: 'api-key',
+      serviceCode: 'oa',
+      country: '0',
+      maxPrice: '0.50',
+      minPrice: '0.10',
+      fetchImpl: async (url) => {
+        urls.push(url);
+        return new Response(
+          JSON.stringify({
+            activationId: 123,
+            phoneNumber: '549112345678',
+            activationCost: '0.42',
+            countryCode: 39,
+          }),
+        );
+      },
+    });
+
+    await client.getNumber({
+      country: '39',
+      maxPrice: '0.45',
+      minPrice: '0.20',
+      providerIds: '10,11',
+      exceptProviderIds: '12',
+    });
+
+    const url = urls[0];
+    expect(url.searchParams.get('action')).toBe('getNumberV2');
+    expect(url.searchParams.get('service')).toBe('oa');
+    expect(url.searchParams.get('country')).toBe('39');
+    expect(url.searchParams.get('maxPrice')).toBe('0.45');
+    expect(url.searchParams.get('minPrice')).toBe('0.20');
+    expect(url.searchParams.get('providerIds')).toBe('10,11');
+    expect(url.searchParams.get('exceptProviderIds')).toBe('12');
+  });
+
+  test('loads top countries by service for Gold provider selection', async () => {
+    const client = new SmsbowerClient({
+      apiKey: 'api-key',
+      serviceCode: 'oa',
+      fetchImpl: async (url) => {
+        expect(url.searchParams.get('action')).toBe('getTopCountriesByService');
+        expect(url.searchParams.get('service')).toBe('oa');
+        return new Response(JSON.stringify({ 39: { 10: { price: '0.42', count: 5 } } }));
+      },
+    });
+
+    await expect(client.getTopCountriesByService('oa')).resolves.toEqual({
+      39: { 10: { price: '0.42', count: 5 } },
     });
   });
 });

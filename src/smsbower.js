@@ -142,6 +142,18 @@ export function parseSetStatusResponse(response) {
   throw new SmsbowerError('UNEXPECTED_RESPONSE', `Unexpected SMSBower setStatus response: ${value}`, { raw: parsed });
 }
 
+export function parseTopCountriesResponse(response) {
+  const parsed = maybeParseJson(response);
+  normalizeObjectError(parsed);
+  throwIfPlatformError(parsed);
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new SmsbowerError('UNEXPECTED_RESPONSE', 'Unexpected SMSBower top countries response', { raw: parsed });
+  }
+
+  return parsed;
+}
+
 export class SmsbowerClient {
   constructor({
     apiKey,
@@ -169,7 +181,7 @@ export class SmsbowerClient {
   }
 
   async request(action, params = {}) {
-    this.ensureConfigured(action === 'getNumberV2' || action === 'getNumber');
+    this.ensureConfigured(false);
 
     const url = new URL(this.baseUrl);
     url.searchParams.set('api_key', this.apiKey);
@@ -194,14 +206,28 @@ export class SmsbowerClient {
     return parseBalanceResponse(response);
   }
 
-  async getNumber() {
+  async getNumber(options = {}) {
+    const serviceCode = options.serviceCode ?? this.serviceCode;
+    if (!serviceCode) {
+      throw new SmsbowerError('MISSING_SERVICE_CODE', 'SMSBOWER_SERVICE_CODE is not configured');
+    }
     const response = await this.request('getNumberV2', {
-      service: this.serviceCode,
-      country: this.country,
-      maxPrice: this.maxPrice,
-      minPrice: this.minPrice,
+      service: serviceCode,
+      country: options.country ?? this.country,
+      maxPrice: options.maxPrice ?? this.maxPrice,
+      minPrice: options.minPrice ?? this.minPrice,
+      providerIds: options.providerIds,
+      exceptProviderIds: options.exceptProviderIds,
     });
     return parseNumberResponse(response);
+  }
+
+  async getTopCountriesByService(serviceCode = this.serviceCode) {
+    if (!serviceCode) {
+      throw new SmsbowerError('MISSING_SERVICE_CODE', 'SMSBOWER_SERVICE_CODE is not configured');
+    }
+    const response = await this.request('getTopCountriesByService', { service: serviceCode });
+    return parseTopCountriesResponse(response);
   }
 
   async getStatus(activationId) {

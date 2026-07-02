@@ -27,6 +27,7 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -57,6 +58,7 @@ button.small {
 }
 
 input,
+select,
 textarea {
   width: 100%;
   border: 1px solid var(--line);
@@ -152,6 +154,30 @@ h2 {
   grid-template-columns: 1fr auto;
   gap: 0.75rem;
   align-items: center;
+}
+
+.inline-control.compact {
+  grid-template-columns: minmax(14rem, 1fr) auto auto;
+  width: min(100%, 42rem);
+}
+
+.settings-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.75rem 1rem;
+  align-items: end;
+}
+
+.settings-form textarea,
+.settings-form button,
+.settings-form .settings-prices {
+  grid-column: 1 / -1;
+}
+
+.settings-prices {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.75rem 1rem;
 }
 
 .message {
@@ -325,8 +351,11 @@ th {
 
 @media (max-width: 760px) {
   .inline-control,
+  .inline-control.compact,
   .activation-card,
-  .admin-grid {
+  .admin-grid,
+  .settings-form,
+  .settings-prices {
     grid-template-columns: 1fr;
   }
 
