@@ -64,7 +64,8 @@ export function renderRedeemPage() {
         <strong id="sms-code">等待短信</strong>
       </div>
       <div class="activation-actions">
-        <button id="replace-number" class="ghost" type="button">更换号码</button>
+        <span id="replace-reason-note" class="replace-reason-note">更换号码适用于：我接不到短信 / 我的号码无法进行短信发送</span>
+        <button id="replace-number" class="danger" type="button">更换号码</button>
       </div>
     </section>
   </section>

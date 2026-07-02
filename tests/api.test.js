@@ -80,7 +80,10 @@ describe('admin API', () => {
 
     const response = await request(app).get('/').expect(200);
 
-    expect(response.text).toContain('id="replace-number"');
+    expect(response.text).toContain('id="replace-reason-note"');
+    expect(response.text).toContain('我接不到短信');
+    expect(response.text).toContain('我的号码无法进行短信发送');
+    expect(response.text).toContain('id="replace-number" class="danger"');
     expect(response.text).toContain('id="copy-local-number"');
   });
 
