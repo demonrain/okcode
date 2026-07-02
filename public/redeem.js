@@ -4,9 +4,21 @@ const card = document.querySelector('#activation-card');
 const phoneNumber = document.querySelector('#phone-number');
 const expiresIn = document.querySelector('#expires-in');
 const smsCode = document.querySelector('#sms-code');
+const replaceButton = document.querySelector('#replace-number');
 
 let activeKey = '';
 let pollTimer = null;
+
+function stopPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = null;
+}
+
+function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(pollStatus, 5000);
+  pollStatus();
+}
 
 function showMessage(text, type = 'info') {
   message.textContent = text;
@@ -27,6 +39,7 @@ function renderActivation(data) {
   expiresIn.textContent = data.expiresInSeconds == null ? '-' : formatSeconds(data.expiresInSeconds);
   smsCode.textContent = data.code || '等待短信';
   smsCode.classList.toggle('ready', Boolean(data.code));
+  replaceButton.disabled = data.status !== 'active' || Boolean(data.code);
 }
 
 async function requestJson(url, options) {
@@ -49,18 +62,18 @@ async function pollStatus() {
     const data = await requestJson(`/api/redeem/${encodeURIComponent(activeKey)}/status`);
     renderActivation(data);
     if (data.code) {
-      clearInterval(pollTimer);
+      stopPolling();
       showMessage('验证码已收到', 'success');
     }
   } catch (error) {
-    clearInterval(pollTimer);
+    stopPolling();
     showMessage(error.message, error.status === 410 ? 'error' : 'info');
   }
 }
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
-  clearInterval(pollTimer);
+  stopPolling();
   activeKey = new FormData(form).get('key').trim();
   showMessage('正在领取手机号...', 'info');
 
@@ -71,10 +84,31 @@ form.addEventListener('submit', async (event) => {
     });
     renderActivation(data);
     showMessage('手机号已分配，请在有效期内完成验证', 'success');
-    pollTimer = setInterval(pollStatus, 5000);
-    pollStatus();
+    startPolling();
   } catch (error) {
     card.hidden = true;
     showMessage(error.message, 'error');
+  }
+});
+
+replaceButton.addEventListener('click', async () => {
+  if (!activeKey) return;
+  stopPolling();
+  replaceButton.disabled = true;
+  showMessage('正在更换号码...', 'info');
+
+  try {
+    const data = await requestJson(`/api/redeem/${encodeURIComponent(activeKey)}/replace`, {
+      method: 'POST',
+    });
+    renderActivation(data);
+    showMessage('号码已更换，请使用新手机号继续验证', 'success');
+    startPolling();
+  } catch (error) {
+    showMessage(error.message, 'error');
+    if (!smsCode.classList.contains('ready')) {
+      replaceButton.disabled = false;
+      startPolling();
+    }
   }
 });

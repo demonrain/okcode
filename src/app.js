@@ -223,6 +223,62 @@ export function createApp({ db, smsClient, config, now = () => new Date() }) {
     }),
   );
 
+  app.post(
+    '/api/redeem/:key/replace',
+    asyncRoute(async (req, res) => {
+      const keyText = repo.normalizeKey(req.params.key);
+      let key = repo.findKeyByPlaintext(keyText);
+      if (!key) throw new AppError(404, 'CDKey 不存在', 'KEY_NOT_FOUND');
+
+      const currentTime = now();
+      if (key.status === 'unused') throw new AppError(400, 'CDKey 尚未领取手机号', 'KEY_UNUSED');
+      if (key.status === 'used') throw new AppError(409, 'CDKey 已收到验证码，不能更换号码', 'KEY_ALREADY_USED');
+      if (key.status === 'revoked') throw new AppError(410, 'CDKey 已撤销', 'KEY_REVOKED');
+      if (key.status === 'expired') throw new AppError(410, 'CDKey 已过期', 'KEY_EXPIRED');
+      if (isExpired(key, currentTime)) {
+        key = repo.markExpired(key.id);
+        await bestEffortCancel(smsClient, key.activation?.activationId);
+        return res.status(410).json(serializeRedeem(key, now()));
+      }
+      if (key.status !== 'active' || !key.activation?.activationId) {
+        throw new AppError(409, '当前 CDKey 状态不可更换号码', 'KEY_NOT_REPLACEABLE');
+      }
+
+      const oldActivationId = key.activation.activationId;
+      const smsStatus = await smsClient.getStatus(oldActivationId);
+
+      if (smsStatus.state === 'ok') {
+        key = repo.markUsed(key.id, smsStatus.code, smsStatus.raw);
+        try {
+          await smsClient.setStatus(oldActivationId, 6);
+        } catch (error) {
+          console.warn('Failed to complete SMSBower activation:', error.message);
+        }
+        throw new AppError(409, '当前号码已收到验证码，不能更换号码', 'KEY_ALREADY_USED');
+      }
+      if (smsStatus.state === 'canceled') {
+        key = repo.markExpired(key.id);
+        return res.status(410).json(serializeRedeem(key, now()));
+      }
+      if (!['waiting', 'retry'].includes(smsStatus.state)) {
+        throw new AppError(409, '当前号码状态不可更换', 'KEY_NOT_REPLACEABLE');
+      }
+
+      try {
+        await smsClient.setStatus(oldActivationId, 8);
+      } catch (error) {
+        if (error instanceof SmsbowerError && error.code === 'EARLY_CANCEL_DENIED') {
+          throw new AppError(409, '号码购买后至少 2 分钟才能取消，请稍后再试', 'REPLACE_TOO_EARLY');
+        }
+        throw error;
+      }
+
+      const number = await smsClient.getNumber();
+      key = repo.replaceActivation(key.id, number, addMinutes(now(), config.activationTtlMinutes));
+      return res.json(serializeRedeem(key, now()));
+    }),
+  );
+
   app.get('/admin/login', (req, res) => res.type('html').send(renderLoginPage()));
   app.post('/admin/login', (req, res, next) => {
     if (!safeCompare(req.body.password, config.adminPassword)) {

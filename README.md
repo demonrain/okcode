@@ -8,6 +8,7 @@
 - 批量生成 CDKey，明文只在生成响应中显示一次，数据库只保存 hash。
 - 管理端验证、查询、撤销 CDKey。
 - 用户无需登录，输入 CDKey 获取手机号并轮询验证码。
+- 用户在未收到验证码时可以更换号码，应用会先取消旧 activation 再获取新号码。
 - CDKey 首次兑换后绑定一个 SMSBower activation，有效期默认 25 分钟。
 
 ## 安全要求
@@ -57,5 +58,7 @@ npm start
 - 查询验证码：`getStatus`
 - 验证码成功后完成激活：`setStatus status=6`
 - 过期或撤销时尝试取消激活：`setStatus status=8`
+- 更换号码：先 `getStatus` 确认旧号码仍在等待验证码，再 `setStatus status=8` 取消，最后重新 `getNumberV2`。
 
 如果平台返回 `EARLY_CANCEL_DENIED`，应用会保留本地过期/撤销状态并忽略该取消失败。
+用户主动更换号码时如果返回 `EARLY_CANCEL_DENIED`，前端会提示稍后再试，不会购买新号码。

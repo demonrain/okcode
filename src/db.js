@@ -229,6 +229,27 @@ export function createRepositories(db, now = () => new Date()) {
     SET status = 'revoked', updated_at = @updatedAt
     WHERE cd_key_id = @cdKeyId
   `);
+  const replaceActivationStmt = db.prepare(`
+    UPDATE activations
+    SET
+      activation_id = @activationId,
+      phone_number = @phoneNumber,
+      code = NULL,
+      status = 'active',
+      activation_cost = @activationCost,
+      country_code = @countryCode,
+      activation_time = @activationTime,
+      can_get_another_sms = @canGetAnotherSms,
+      raw_number_response = @rawNumberResponse,
+      raw_status_response = NULL,
+      updated_at = @updatedAt
+    WHERE cd_key_id = @cdKeyId
+  `);
+  const refreshActiveKeyStmt = db.prepare(`
+    UPDATE cd_keys
+    SET status = 'active', redeemed_at = @redeemedAt, expires_at = @expiresAt
+    WHERE id = @id AND status = 'active'
+  `);
 
   return {
     createKeys(count) {
@@ -298,6 +319,36 @@ export function createRepositories(db, now = () => new Date()) {
       });
       tx();
       return { key: parseRow(findById.get(id)), changed: true, previous: key };
+    },
+
+    replaceActivation(keyId, number, expiresAt) {
+      const current = iso(now());
+      const tx = db.transaction(() => {
+        const keyUpdate = refreshActiveKeyStmt.run({
+          id: keyId,
+          redeemedAt: current,
+          expiresAt: iso(expiresAt),
+        });
+        if (keyUpdate.changes !== 1) {
+          throw new Error('CDKey is no longer active');
+        }
+        const activationUpdate = replaceActivationStmt.run({
+          cdKeyId: keyId,
+          activationId: number.activationId,
+          phoneNumber: number.phoneNumber,
+          activationCost: number.activationCost,
+          countryCode: number.countryCode,
+          activationTime: number.activationTime,
+          canGetAnotherSms: number.canGetAnotherSms == null ? null : Number(Boolean(number.canGetAnotherSms)),
+          rawNumberResponse: JSON.stringify(number.raw ?? null),
+          updatedAt: current,
+        });
+        if (activationUpdate.changes !== 1) {
+          throw new Error('Activation is missing for active CDKey');
+        }
+      });
+      tx();
+      return parseRow(findById.get(keyId));
     },
 
     normalizeKey,

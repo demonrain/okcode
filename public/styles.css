@@ -184,6 +184,12 @@ h2 {
   font-size: 1.2rem;
 }
 
+.activation-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+}
+
 .label {
   color: var(--muted);
   font-size: 0.82rem;

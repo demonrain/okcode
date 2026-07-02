@@ -48,6 +48,9 @@ export function renderRedeemPage() {
         <span class="label">验证码</span>
         <strong id="sms-code">等待短信</strong>
       </div>
+      <div class="activation-actions">
+        <button id="replace-number" class="ghost" type="button">更换号码</button>
+      </div>
     </section>
   </section>
 </main>`,

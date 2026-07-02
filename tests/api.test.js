@@ -70,6 +70,14 @@ describe('admin API', () => {
     expect(response.headers['content-security-policy']).toContain("default-src 'self'");
   });
 
+  test('renders a replace-number control on the public redeem page', async () => {
+    const { app } = makeTestApp();
+
+    const response = await request(app).get('/').expect(200);
+
+    expect(response.text).toContain('id="replace-number"');
+  });
+
   test('rejects admin mutations without a CSRF token', async () => {
     const { app } = makeTestApp();
     const agent = request.agent(app);
@@ -241,5 +249,69 @@ describe('redeem API', () => {
     expect(response.body.error).toBe('Internal Server Error');
     expect(bodyText).not.toContain('secret-value');
     expect(bodyText).not.toContain('stack');
+  });
+
+  test('replaces an active waiting number by canceling it and buying a new one', async () => {
+    const getNumber = vi
+      .fn()
+      .mockResolvedValueOnce({
+        activationId: 'act-1',
+        phoneNumber: '15551234567',
+        activationCost: '0.42',
+        countryCode: '0',
+        activationTime: '2026-07-02 10:00:00',
+        canGetAnotherSms: true,
+        raw: {},
+      })
+      .mockResolvedValueOnce({
+        activationId: 'act-2',
+        phoneNumber: '15557654321',
+        activationCost: '0.41',
+        countryCode: '0',
+        activationTime: '2026-07-02 10:01:00',
+        canGetAnotherSms: true,
+        raw: {},
+      });
+    const { app, smsClient } = makeTestApp({
+      smsClient: {
+        getNumber,
+        getStatus: vi.fn(async () => ({ state: 'waiting', code: null, lastCode: null, raw: 'STATUS_WAIT_CODE' })),
+      },
+    });
+    const agent = request.agent(app);
+    const csrfToken = await login(agent);
+    const created = await adminPost(agent, '/admin/api/keys', csrfToken).send({ count: 1 }).expect(201);
+    await request(app).post('/api/redeem').send({ key: created.body.keys[0].key }).expect(200);
+
+    const replaced = await request(app)
+      .post(`/api/redeem/${encodeURIComponent(created.body.keys[0].key)}/replace`)
+      .expect(200);
+
+    expect(replaced.body.status).toBe('active');
+    expect(replaced.body.phoneNumber).toBe('15557654321');
+    expect(smsClient.getStatus).toHaveBeenCalledWith('act-1');
+    expect(smsClient.setStatus).toHaveBeenCalledWith('act-1', 8);
+    expect(smsClient.getNumber).toHaveBeenCalledTimes(2);
+  });
+
+  test('rejects replacement when the current number already received a code', async () => {
+    const { app, smsClient } = makeTestApp({
+      smsClient: {
+        getStatus: vi.fn(async () => ({ state: 'ok', code: '654321', lastCode: null, raw: 'STATUS_OK:654321' })),
+      },
+    });
+    const agent = request.agent(app);
+    const csrfToken = await login(agent);
+    const created = await adminPost(agent, '/admin/api/keys', csrfToken).send({ count: 1 }).expect(201);
+    await request(app).post('/api/redeem').send({ key: created.body.keys[0].key }).expect(200);
+
+    const response = await request(app)
+      .post(`/api/redeem/${encodeURIComponent(created.body.keys[0].key)}/replace`)
+      .expect(409);
+
+    expect(response.body.code).toBe('KEY_ALREADY_USED');
+    expect(smsClient.setStatus).toHaveBeenCalledWith('act-1', 6);
+    expect(smsClient.setStatus).not.toHaveBeenCalledWith('act-1', 8);
+    expect(smsClient.getNumber).toHaveBeenCalledTimes(1);
   });
 });
