@@ -21,6 +21,7 @@ export function loadConfig(env = process.env) {
     databasePath: env.DATABASE_PATH || './data/app.sqlite',
     adminPassword,
     sessionSecret,
+    cdKeyEncryptionSecret: env.CDKEY_ENCRYPTION_SECRET || sessionSecret,
     secureCookies: env.SESSION_COOKIE_SECURE === 'true' || production,
     smsBowerApiKey: env.SMSBOWER_API_KEY || '',
     smsBowerBaseUrl: env.SMSBOWER_BASE_URL || 'https://smsbower.page/stubs/handler_api.php',

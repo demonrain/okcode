@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { generateCdKey, hashKey, keyPrefix, normalizeKey } from './cdkey.js';
+import { decryptText, encryptText } from './secret-box.js';
 
 const VALID_KEY_STATUSES = new Set(['unused', 'active', 'used', 'expired', 'revoked']);
 
@@ -63,18 +64,24 @@ function migrate(db) {
     CREATE INDEX IF NOT EXISTS idx_cd_keys_status ON cd_keys(status);
     CREATE INDEX IF NOT EXISTS idx_cd_keys_expires_at ON cd_keys(expires_at);
   `);
+
+  const cdKeyColumns = new Set(db.prepare('PRAGMA table_info(cd_keys)').all().map((column) => column.name));
+  if (!cdKeyColumns.has('key_ciphertext')) {
+    db.exec('ALTER TABLE cd_keys ADD COLUMN key_ciphertext TEXT');
+  }
 }
 
 function iso(date) {
   return date.toISOString();
 }
 
-function parseRow(row) {
+function parseRow(row, decryptKey = () => null) {
   if (!row) return null;
+  const decryptedKey = decryptKey(row.key_ciphertext);
   return {
     id: row.id,
     keyHash: row.key_hash,
-    keyPrefix: row.key_prefix,
+    keyPrefix: decryptedKey ?? row.key_prefix,
     status: row.status,
     createdAt: row.created_at,
     redeemedAt: row.redeemed_at,
@@ -101,7 +108,9 @@ function parseRow(row) {
   };
 }
 
-export function createRepositories(db, now = () => new Date()) {
+export function createRepositories(db, now = () => new Date(), options = {}) {
+  const encryptionSecret = options.cdKeyEncryptionSecret || '';
+  const decryptKey = (payload) => decryptText(payload, encryptionSecret);
   const selectKeyWithActivation = db.prepare(`
     SELECT
       k.*,
@@ -123,8 +132,8 @@ export function createRepositories(db, now = () => new Date()) {
   `);
 
   const insertKey = db.prepare(`
-    INSERT INTO cd_keys (key_hash, key_prefix, status, created_at)
-    VALUES (@keyHash, @keyPrefix, 'unused', @createdAt)
+    INSERT INTO cd_keys (key_hash, key_prefix, key_ciphertext, status, created_at)
+    VALUES (@keyHash, @keyPrefix, @keyCiphertext, 'unused', @createdAt)
   `);
 
   const createKey = () => {
@@ -134,6 +143,7 @@ export function createRepositories(db, now = () => new Date()) {
         const result = insertKey.run({
           keyHash: hashKey(key),
           keyPrefix: keyPrefix(key),
+          keyCiphertext: encryptText(key, encryptionSecret),
           createdAt: iso(now()),
         });
         return { id: Number(result.lastInsertRowid), key, status: 'unused' };
@@ -203,7 +213,7 @@ export function createRepositories(db, now = () => new Date()) {
       updatedAt: current,
     });
 
-    return parseRow(findById.get(keyId));
+    return parseRow(findById.get(keyId), decryptKey);
   });
 
   const updateActivationStatus = db.prepare(`
@@ -269,20 +279,20 @@ export function createRepositories(db, now = () => new Date()) {
     },
 
     findKeyByPlaintext(key) {
-      return parseRow(findByHash.get(hashKey(key)));
+      return parseRow(findByHash.get(hashKey(key)), decryptKey);
     },
 
     findKeyById(id) {
-      return parseRow(findById.get(id));
+      return parseRow(findById.get(id), decryptKey);
     },
 
     listKeys({ limit = 100, offset = 0 } = {}) {
-      const keys = listKeysStmt.all(limit, offset).map(parseRow);
+      const keys = listKeysStmt.all(limit, offset).map((row) => parseRow(row, decryptKey));
       return { keys, total: countKeysStmt.get().count };
     },
 
     listKeysByPlaintext(key) {
-      const found = parseRow(findByHash.get(hashKey(key)));
+      const found = parseRow(findByHash.get(hashKey(key)), decryptKey);
       return { keys: found ? [found] : [], total: found ? 1 : 0 };
     },
 
@@ -310,7 +320,7 @@ export function createRepositories(db, now = () => new Date()) {
         rawStatusResponse: JSON.stringify(rawStatus ?? null),
         updatedAt: iso(now()),
       });
-      return parseRow(findById.get(keyId));
+      return parseRow(findById.get(keyId), decryptKey);
     },
 
     markUsed(keyId, code, rawStatus) {
@@ -325,7 +335,7 @@ export function createRepositories(db, now = () => new Date()) {
         });
       });
       tx();
-      return parseRow(findById.get(keyId));
+      return parseRow(findById.get(keyId), decryptKey);
     },
 
     markExpired(keyId) {
@@ -335,12 +345,12 @@ export function createRepositories(db, now = () => new Date()) {
         markActivationExpiredStmt.run({ cdKeyId: keyId, updatedAt: current });
       });
       tx();
-      return parseRow(findById.get(keyId));
+      return parseRow(findById.get(keyId), decryptKey);
     },
 
     revokeKey(id) {
       const current = iso(now());
-      const key = parseRow(findById.get(id));
+      const key = parseRow(findById.get(id), decryptKey);
       if (!key) return null;
       if (!VALID_KEY_STATUSES.has(key.status) || !['unused', 'active'].includes(key.status)) {
         return { key, changed: false };
@@ -350,7 +360,7 @@ export function createRepositories(db, now = () => new Date()) {
         markActivationRevokedStmt.run({ cdKeyId: id, updatedAt: current });
       });
       tx();
-      return { key: parseRow(findById.get(id)), changed: true, previous: key };
+      return { key: parseRow(findById.get(id), decryptKey), changed: true, previous: key };
     },
 
     replaceActivation(keyId, number, expiresAt) {
@@ -380,7 +390,7 @@ export function createRepositories(db, now = () => new Date()) {
         }
       });
       tx();
-      return parseRow(findById.get(keyId));
+      return parseRow(findById.get(keyId), decryptKey);
     },
 
     normalizeKey,

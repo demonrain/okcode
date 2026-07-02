@@ -169,7 +169,7 @@ describe('admin API', () => {
   });
 
   test('generates keys and only returns plaintext once', async () => {
-    const { app } = makeTestApp();
+    const { app, db } = makeTestApp();
     const agent = request.agent(app);
     const csrfToken = await login(agent);
 
@@ -180,7 +180,12 @@ describe('admin API', () => {
     const listed = await agent.get('/admin/api/keys').expect(200);
     expect(listed.body.keys).toHaveLength(2);
     expect(listed.body.keys[0]).not.toHaveProperty('key');
+    expect(listed.body.keys[0].keyPrefix).toBe(created.body.keys[1].key);
     expect(listed.body.keys[0].status).toBe('unused');
+
+    const stored = db.prepare('SELECT key_ciphertext FROM cd_keys WHERE id = ?').get(created.body.keys[1].id);
+    expect(stored.key_ciphertext).toBeTruthy();
+    expect(stored.key_ciphertext).not.toContain(created.body.keys[1].key);
   });
 
   test('validates keys without redeeming them', async () => {

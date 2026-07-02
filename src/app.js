@@ -195,7 +195,7 @@ function requireCsrf(req, res, next) {
 
 export function createApp({ db, smsClient, config, now = () => new Date() }) {
   const app = express();
-  const repo = createRepositories(db, now);
+  const repo = createRepositories(db, now, { cdKeyEncryptionSecret: config.cdKeyEncryptionSecret || config.sessionSecret });
 
   app.disable('x-powered-by');
   app.set('trust proxy', config.secureCookies ? 1 : false);
