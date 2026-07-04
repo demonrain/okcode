@@ -170,7 +170,7 @@ export function renderAdminPage(csrfToken) {
         </form>
       </div>
       <div class="table-wrap">
-        <table>
+        <table class="keys-table">
           <thead>
             <tr>
               <th>ID</th>
@@ -182,7 +182,7 @@ export function renderAdminPage(csrfToken) {
               <th>费用</th>
               <th>过期时间</th>
               <th>创建时间</th>
-              <th>操作</th>
+              <th class="actions">操作</th>
             </tr>
           </thead>
           <tbody id="keys-table"></tbody>

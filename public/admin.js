@@ -96,9 +96,9 @@ async function loadKeys(searchKey = '') {
       <td>${formatValue(key.countryName || key.countryCode)}</td>
       <td>${formatValue(key.code)}</td>
       <td>${formatValue(key.activationCost)}</td>
-      <td>${formatValue(key.expiresAt)}</td>
-      <td>${formatValue(key.createdAt)}</td>
-      <td>${['unused', 'active'].includes(key.status) ? `<button data-revoke="${key.id}" type="button">撤销</button>` : '-'}</td>
+      <td class="datetime">${formatValue(key.expiresAt)}</td>
+      <td class="datetime">${formatValue(key.createdAt)}</td>
+      <td class="actions">${['unused', 'active'].includes(key.status) ? `<button class="small danger" data-revoke="${key.id}" type="button">撤销</button>` : '-'}</td>
     `;
     keysTable.appendChild(tr);
   }

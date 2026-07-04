@@ -268,7 +268,7 @@ h2 {
 }
 
 .admin-shell {
-  width: min(100% - 2rem, 72rem);
+  width: min(100% - 2rem, 96rem);
   margin: 0 auto;
   padding: 2rem 0;
 }
@@ -323,6 +323,36 @@ h2 {
 
 .table-wrap {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+table.keys-table {
+  min-width: 68rem;
+}
+
+table.keys-table th,
+table.keys-table td {
+  vertical-align: middle;
+}
+
+table.keys-table .datetime {
+  white-space: nowrap;
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+}
+
+table.keys-table .actions {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  min-width: 5.5rem;
+  white-space: nowrap;
+  background: white;
+  box-shadow: -6px 0 10px rgba(21, 21, 21, 0.06);
+}
+
+table.keys-table thead .actions {
+  z-index: 2;
 }
 
 table {
@@ -338,7 +368,6 @@ td {
   border-bottom: 1px solid var(--line);
   padding: 0.75rem;
   text-align: left;
-  white-space: nowrap;
 }
 
 th {
