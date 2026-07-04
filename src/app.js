@@ -8,6 +8,7 @@ import { SmsbowerError } from './smsbower.js';
 import { SqliteSessionStore } from './session-store.js';
 import { renderAdminPage, renderLoginPage, renderRedeemPage } from './views.js';
 import { getPhoneCountryInfo } from './countries.js';
+import { formatDateTime } from './format.js';
 import { defaultPurchaseSettingsFromConfig, normalizePurchaseSettings } from './purchase-settings.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -76,11 +77,11 @@ function serializeKey(key, currentTime = new Date()) {
     id: key.id,
     keyPrefix: key.keyPrefix,
     status: key.status,
-    createdAt: key.createdAt,
-    redeemedAt: key.redeemedAt,
-    expiresAt: key.expiresAt,
-    usedAt: key.usedAt,
-    revokedAt: key.revokedAt,
+    createdAt: formatDateTime(key.createdAt),
+    redeemedAt: formatDateTime(key.redeemedAt),
+    expiresAt: formatDateTime(key.expiresAt),
+    usedAt: formatDateTime(key.usedAt),
+    revokedAt: formatDateTime(key.revokedAt),
     phoneNumber: key.activation?.phoneNumber ?? null,
     countryCode: countryInfo.countryCode,
     countryName: countryInfo.countryName,
@@ -104,7 +105,7 @@ function serializeRedeem(key, currentTime) {
     dialCode: countryInfo.dialCode,
     localNumber: countryInfo.localNumber,
     code: key.activation?.code ?? null,
-    expiresAt: key.expiresAt,
+    expiresAt: formatDateTime(key.expiresAt),
     expiresInSeconds: key.expiresAt ? secondsUntil(key.expiresAt, currentTime) : null,
   };
 }

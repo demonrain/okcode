@@ -1,0 +1,24 @@
+services:
+  okcode:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: okcode:local
+    container_name: okcode
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    networks:
+      - traefik-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+networks:
+  traefik-net:
+    external: true
